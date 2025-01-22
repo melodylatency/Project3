@@ -70,32 +70,52 @@ class DiceGame:
 
 
     def determine_first_move(self):
-        """Determine who goes first using a fair random number."""
+        """Determine who makes the first move using provable fair random generation."""
         print("Let's determine who makes the first move.")
-        hmac_val = hmac.new(self.secret_key, secrets.token_bytes(32), hashlib.sha3_256).hexdigest()
-        print(f"HMAC={hmac_val.upper()}")
+
+        # Step 1: Generate a secure random number (0 or 1)
+        random_number = secrets.randbelow(2)  # Fair random integer in the range [0, 1]
+        
+        # Step 2: Generate a cryptographic key
+        self.secret_key = RandomFairGenerator.generate_secure_key()
+        
+        # Step 3: Calculate HMAC for the random number
+        hmac_value = hmac.new(self.secret_key, str(random_number).encode(), hashlib.sha3_256).hexdigest()
+        print(f"HMAC={hmac_value.upper()}")
+        
         print("Try to guess my selection.")
         print("0 - 0")
         print("1 - 1")
         print("X - exit")
         print("? - help")
-
+        
         while True:
             choice = input("Your selection: ").strip()
-            if choice == '0':
-                self.first_player = 'computer'
-                print(f"My selection: 0 (KEY={self.secret_key.hex()})")  # Show the key used
+            
+            if choice == '0' or choice == '1':
+                user_guess = int(choice)
+                
+                # Reveal the computer's choice and key
+                print(f"My selection: {random_number} (KEY={self.secret_key.hex()})")
+                
+                # Determine who goes first
+                if user_guess == random_number:
+                    self.first_player = 'user'
+                    print("You guessed correctly! You make the first move.")
+                else:
+                    self.first_player = 'computer'
+                    print("You guessed incorrectly. I make the first move.")
                 break
-            elif choice == '1':
-                self.first_player = 'user'
-                print(f"My selection: 1 (KEY={self.secret_key.hex()})")  # Show the key used
-                break
+            
             elif choice.lower() == 'x':
                 sys.exit(0)
+            
             elif choice.lower() == '?':
                 self.display_help()
+            
             else:
                 print("Invalid choice. Please try again.")
+
 
     def play_turn(self, player: str, available_dice: List[Dice]):
         """Allow a player to select a dice and generate a throw."""

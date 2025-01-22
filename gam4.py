@@ -22,21 +22,13 @@ class RandomFairGenerator:
         return secrets.token_bytes(32)  # 256-bit key
 
     @staticmethod
-    def generate_hmac(value: int, key: bytes) -> str:
-        """Generates HMAC for a given value and key."""
-        message = str(value).encode()
-        return hmac.new(key, message, hashlib.sha3_256).hexdigest()
-
-    @staticmethod
-    def generate_fair_number(lower: int, upper: int, key: bytes) -> int:
-        """Generates a fair random number and its HMAC."""
-        range_size = upper - lower + 1
-        while True:
-            random_bytes = secrets.token_bytes(2)
-            random_value = int.from_bytes(random_bytes, 'big')
-            if random_value < range_size * (2**16 // range_size):  # Avoid bias
-                break
-        return random_value % range_size + lower
+    def generate_fair_number(lower: int, upper: int, key: bytes, seed: bytes = None) -> int:
+        """Generates a fair number within the given range using a secure random key."""
+        if seed:
+            hmac_value = hmac.new(key, seed, hashlib.sha3_256).digest()
+        else:
+            hmac_value = hmac.new(key, secrets.token_bytes(32), hashlib.sha3_256).digest()
+        return int.from_bytes(hmac_value[:2], 'big') % (upper - lower + 1) + lower
 
 
 # --- DiceGame Class ---
@@ -99,18 +91,9 @@ class DiceGame:
 
     def play_turn(self, player: str, available_dice: List[Dice]):
         if player == 'computer':
-            self.secret_key = RandomFairGenerator.generate_secure_key()
-            computer_choice_index = secrets.randbelow(len(available_dice))
-            self.computer_dice = available_dice[computer_choice_index]
+            choice = secrets.randbelow(len(available_dice))
+            self.computer_dice = available_dice[choice]
             print(f"Computer chose: {self.computer_dice}")
-
-            # Generate fair number and HMAC
-            computer_number = RandomFairGenerator.generate_fair_number(0, len(self.computer_dice.values) - 1, self.secret_key)
-            hmac_value = RandomFairGenerator.generate_hmac(computer_number, self.secret_key)
-            print(f"Computer's HMAC: {hmac_value}")
-
-            # Store computer's choice for later validation
-            self.computer_choice = computer_number
         else:
             while True:
                 print("Choose your dice:")
@@ -137,7 +120,7 @@ class DiceGame:
             available_dice.remove(self.user_dice)
             self.play_turn('computer', available_dice)
 
-        computer_choice = RandomFairGenerator.generate_fair_number(0, len(self.computer_dice.values) - 1, self.secret_key)
+        computer_choice = self.manual_pick(self.computer_dice)
         user_choice = self.manual_pick(self.user_dice)
 
         total = computer_choice + user_choice

@@ -22,13 +22,21 @@ class RandomFairGenerator:
         return secrets.token_bytes(32)  # 256-bit key
 
     @staticmethod
-    def generate_fair_number(lower: int, upper: int, key: bytes, seed: bytes = None) -> int:
-        """Generates a fair number within the given range using a secure random key."""
-        if seed:
-            hmac_value = hmac.new(key, seed, hashlib.sha3_256).digest()
-        else:
-            hmac_value = hmac.new(key, secrets.token_bytes(32), hashlib.sha3_256).digest()
-        return int.from_bytes(hmac_value[:2], 'big') % (upper - lower + 1) + lower
+    def generate_hmac(value: int, key: bytes) -> str:
+        """Generates HMAC for a given value and key."""
+        message = str(value).encode()
+        return hmac.new(key, message, hashlib.sha3_256).hexdigest()
+
+    @staticmethod
+    def generate_fair_number(lower: int, upper: int, key: bytes) -> int:
+        """Generates a fair random number and its HMAC."""
+        range_size = upper - lower + 1
+        while True:
+            random_bytes = secrets.token_bytes(2)
+            random_value = int.from_bytes(random_bytes, 'big')
+            if random_value < range_size * (2**16 // range_size):  # Avoid bias
+                break
+        return random_value % range_size + lower
 
 
 # --- DiceGame Class ---
@@ -43,7 +51,7 @@ class DiceGame:
     def validate_arguments(self):
         if len(sys.argv) < 4:
             raise ValueError("Not enough dice provided. You need to provide 3 or more dice configurations.")
-        
+
         dice_sides = None  # To track the number of sides for consistency check.
         self.dice_list = []  # Ensure dice_list is initialized.
 
@@ -52,171 +60,113 @@ class DiceGame:
                 values = list(map(int, arg.split(',')))
             except ValueError:
                 raise ValueError(f"Invalid dice configuration: {arg}. Ensure each value is an integer.")
-            
-            # Check if the die has at least 4 sides.
+
             if len(values) < 4:
                 raise ValueError(f"Invalid dice configuration: {arg}. Each die must have at least 4 sides.")
-            
-            # Check if all dice have the same number of sides.
+
             if dice_sides is None:
-                dice_sides = len(values)  # Set the expected number of sides.
+                dice_sides = len(values)
             elif len(values) != dice_sides:
                 raise ValueError(f"Inconsistent number of sides: {arg}. All dice must have {dice_sides} sides.")
-            
-            # Add the valid dice to the list.
+
             self.dice_list.append(Dice(values))
-        
+
         print(f"Dice configurations: {self.dice_list}")
 
-
     def determine_first_move(self):
-        """Determine who makes the first move using provable fair random generation."""
-        print("Let's determine who makes the first move.")
-
-        # Step 1: Generate a secure random number (0 or 1)
-        random_number = secrets.randbelow(2)  # Fair random integer in the range [0, 1]
-        
-        # Step 2: Generate a cryptographic key
+        print("Determining who makes the first move...")
+        random_number = secrets.randbelow(2)  # 0 or 1
         self.secret_key = RandomFairGenerator.generate_secure_key()
-        
-        # Step 3: Calculate HMAC for the random number
         hmac_value = hmac.new(self.secret_key, str(random_number).encode(), hashlib.sha3_256).hexdigest()
         print(f"HMAC={hmac_value.upper()}")
-        
-        print("Try to guess my selection.")
-        print("0 - 0")
-        print("1 - 1")
-        print("X - exit")
-        print("? - help")
-        
+
         while True:
-            choice = input("Your selection: ").strip()
-            
+            choice = input("Guess 0 or 1 (X to exit): ").strip()
             if choice == '0' or choice == '1':
                 user_guess = int(choice)
-                
-                # Reveal the computer's choice and key
-                print(f"My selection: {random_number} (KEY={self.secret_key.hex()})")
-                
-                # Determine who goes first
+                print(f"My choice: {random_number} (KEY={self.secret_key.hex()})")
                 if user_guess == random_number:
                     self.first_player = 'user'
-                    print("You guessed correctly! You make the first move.")
+                    print("You go first!")
                 else:
                     self.first_player = 'computer'
-                    print("You guessed incorrectly. I make the first move.")
+                    print("I go first!")
                 break
-            
             elif choice.lower() == 'x':
                 sys.exit(0)
-            
-            elif choice.lower() == '?':
-                self.display_help()
-            
             else:
                 print("Invalid choice. Please try again.")
-
 
     def play_turn(self, player: str, available_dice: List[Dice]):
-        """Allow a player to select a dice and generate a throw."""
-        print(f"{player.capitalize()}'s turn!")
-        print("Choose your dice:")
-        for idx, dice in enumerate(available_dice):
-            print(f"{idx} - {', '.join(map(str, dice.values))}")
+        if player == 'computer':
+            self.secret_key = RandomFairGenerator.generate_secure_key()
+            computer_choice_index = secrets.randbelow(len(available_dice))
+            self.computer_dice = available_dice[computer_choice_index]
+            print(f"Computer chose: {self.computer_dice}")
 
-        while True:
-            choice = input("Your selection: ").strip()
-            if choice.lower() == 'x':
-                sys.exit(0)
-            elif choice.isdigit() and int(choice) < len(available_dice):
-                if player == 'user':
+            # Generate fair number and HMAC
+            computer_number = RandomFairGenerator.generate_fair_number(0, len(self.computer_dice.values) - 1, self.secret_key)
+            hmac_value = RandomFairGenerator.generate_hmac(computer_number, self.secret_key)
+            print(f"Computer's HMAC: {hmac_value}")
+
+            # Store computer's choice for later validation
+            self.computer_choice = computer_number
+        else:
+            while True:
+                print("Choose your dice:")
+                for idx, dice in enumerate(available_dice):
+                    print(f"{idx}: {', '.join(map(str, dice.values))}")
+                choice = input("Your choice: ").strip()
+                if choice.isdigit() and 0 <= int(choice) < len(available_dice):
                     self.user_dice = available_dice[int(choice)]
+                    print(f"You chose: {self.user_dice}")
+                    break
                 else:
-                    self.computer_dice = available_dice[int(choice)]
-                break
-            else:
-                print("Invalid choice. Please try again.")
+                    print("Invalid choice. Try again.")
 
     def play_game(self):
-        """Play the dice game."""
         self.determine_first_move()
 
-        # Determine dice selection
         available_dice = self.dice_list.copy()
         if self.first_player == 'computer':
             self.play_turn('computer', available_dice)
-            available_dice.remove(self.computer_dice)  # Remove selected dice from the list for user
+            available_dice.remove(self.computer_dice)
             self.play_turn('user', available_dice)
         else:
             self.play_turn('user', available_dice)
-            available_dice.remove(self.user_dice)  # Remove selected dice from the list for computer
+            available_dice.remove(self.user_dice)
             self.play_turn('computer', available_dice)
 
-        # Computer selects its throw
-        print(f"My selection: {self.computer_dice.values}")
-        computer_throw = self.generate_throw(self.computer_dice)
+        computer_choice = RandomFairGenerator.generate_fair_number(0, len(self.computer_dice.values) - 1, self.secret_key)
+        user_choice = self.manual_pick(self.user_dice)
 
-        # User selects their throw
-        print(f"Your selection: {self.user_dice.values}")
-        user_throw = self.generate_throw(self.user_dice)
+        total = computer_choice + user_choice
+        index = total % len(self.computer_dice.values)
 
-        # Display throws and keys
-        print(f"My throw: {computer_throw} (KEY={self.secret_key.hex()})")
-        print(f"Your throw: {user_throw} (KEY={self.secret_key.hex()})")
+        computer_throw = self.computer_dice.values[index]
+        user_throw = self.user_dice.values[index]
+
+        print(f"Computer's choice: {computer_choice}, throw: {computer_throw}")
+        print(f"Your choice: {user_choice}, throw: {user_throw}")
 
         if computer_throw == user_throw:
             print("It's a tie!")
         elif user_throw > computer_throw:
-            print(f"{user_throw} > {computer_throw}: You win!")
+            print("You win!")
         else:
-            print(f"{user_throw} < {computer_throw}: I win!")
+            print("Computer wins!")
 
-    def generate_throw(self, dice: Dice):
-        """Generate a throw using the dice and the shared key."""
-        seed = secrets.token_bytes(16)  # Unique seed for each roll
-        fair_number = RandomFairGenerator.generate_fair_number(0, len(dice.values) - 1, self.secret_key, seed)
-        return dice.values[fair_number]
-
-    def display_help(self):
-        """Display help information."""
-        print("Help: The game is fair because both the computer and user participate in the random number generation process.")
-        print("Here is the probability table for each dice pair:\n")
-        print(TableGenerator.generate_probability_table(self.dice_list))
+    def manual_pick(self, dice: Dice):
+        print(f"Dice: {', '.join(map(str, dice.values))}")
+        while True:
+            choice = input(f"Pick a number (0-{len(dice.values) - 1}): ").strip()
+            if choice.isdigit() and 0 <= int(choice) < len(dice.values):
+                return int(choice)
+            print("Invalid choice. Try again.")
 
 
-# --- TableGenerator Class (for help table generation) ---
-class TableGenerator:
-    @staticmethod
-    def generate_probability_table(dice_list: List[Dice]):
-        """Generate a table showing probabilities of winning for each dice pair."""
-        table = []
-        for i, dice1 in enumerate(dice_list):
-            for j, dice2 in enumerate(dice_list):
-                if i != j:
-                    prob = TableGenerator.simulate_game(dice1, dice2)  # Simulate to get the winning probability
-                    table.append(f"Dice {i} vs Dice {j} -> Win Probability: {prob:.2f}")
-        return "\n".join(table)
-
-    @staticmethod
-    def simulate_game(dice1: Dice, dice2: Dice) -> float:
-        """Simulate many games to estimate win probabilities."""
-        wins = 0
-        draws = 0
-        total = 10000  # Simulate 10,000 games for approximation
-        for _ in range(total):
-            roll1 = secrets.choice(dice1.values)
-            roll2 = secrets.choice(dice2.values)
-            if roll1 > roll2:
-                wins += 1
-            elif roll1 == roll2:
-                draws += 1
-        return wins / (total - draws)
-
-
-# Main Program Execution
 if __name__ == "__main__":
     dice_game = DiceGame(dice_list=[])
-    
     try:
         dice_game.validate_arguments()
         dice_game.play_game()

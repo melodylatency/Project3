@@ -22,21 +22,13 @@ class RandomFairGenerator:
         return secrets.token_bytes(32)  # 256-bit key
 
     @staticmethod
-    def generate_hmac(value: int, key: bytes) -> str:
-        """Generates HMAC for a given value and key."""
-        message = str(value).encode()
-        return hmac.new(key, message, hashlib.sha3_256).hexdigest()
-
-    @staticmethod
-    def generate_fair_number(lower: int, upper: int, key: bytes) -> int:
-        """Generates a fair random number and its HMAC."""
-        range_size = upper - lower + 1
-        while True:
-            random_bytes = secrets.token_bytes(2)
-            random_value = int.from_bytes(random_bytes, 'big')
-            if random_value < range_size * (2**16 // range_size):  # Avoid bias
-                break
-        return random_value % range_size + lower
+    def generate_fair_number(lower: int, upper: int, key: bytes, seed: bytes = None) -> int:
+        """Generates a fair number within the given range using a secure random key."""
+        if seed:
+            hmac_value = hmac.new(key, seed, hashlib.sha3_256).digest()
+        else:
+            hmac_value = hmac.new(key, secrets.token_bytes(32), hashlib.sha3_256).digest()
+        return int.from_bytes(hmac_value[:2], 'big') % (upper - lower + 1) + lower
 
 
 # --- DiceGame Class ---
@@ -51,7 +43,7 @@ class DiceGame:
     def validate_arguments(self):
         if len(sys.argv) < 4:
             raise ValueError("Not enough dice provided. You need to provide 3 or more dice configurations.")
-
+        
         dice_sides = None  # To track the number of sides for consistency check.
         self.dice_list = []  # Ensure dice_list is initialized.
 
@@ -60,17 +52,17 @@ class DiceGame:
                 values = list(map(int, arg.split(',')))
             except ValueError:
                 raise ValueError(f"Invalid dice configuration: {arg}. Ensure each value is an integer.")
-
+            
             if len(values) < 4:
                 raise ValueError(f"Invalid dice configuration: {arg}. Each die must have at least 4 sides.")
-
+            
             if dice_sides is None:
                 dice_sides = len(values)
             elif len(values) != dice_sides:
                 raise ValueError(f"Inconsistent number of sides: {arg}. All dice must have {dice_sides} sides.")
-
+            
             self.dice_list.append(Dice(values))
-
+        
         print(f"Dice configurations: {self.dice_list}")
 
     def determine_first_move(self):
@@ -99,18 +91,9 @@ class DiceGame:
 
     def play_turn(self, player: str, available_dice: List[Dice]):
         if player == 'computer':
-            self.secret_key = RandomFairGenerator.generate_secure_key()
-            computer_choice_index = secrets.randbelow(len(available_dice))
-            self.computer_dice = available_dice[computer_choice_index]
+            choice = secrets.randbelow(len(available_dice))
+            self.computer_dice = available_dice[choice]
             print(f"Computer chose: {self.computer_dice}")
-
-            # Generate fair number and HMAC
-            computer_number = RandomFairGenerator.generate_fair_number(0, len(self.computer_dice.values) - 1, self.secret_key)
-            hmac_value = RandomFairGenerator.generate_hmac(computer_number, self.secret_key)
-            print(f"Computer's HMAC: {hmac_value}")
-
-            # Store computer's choice for later validation
-            self.computer_choice = computer_number
         else:
             while True:
                 print("Choose your dice:")
@@ -137,17 +120,12 @@ class DiceGame:
             available_dice.remove(self.user_dice)
             self.play_turn('computer', available_dice)
 
-        computer_choice = RandomFairGenerator.generate_fair_number(0, len(self.computer_dice.values) - 1, self.secret_key)
-        user_choice = self.manual_pick(self.user_dice)
+        computer_throw = self.generate_throw(self.computer_dice)
 
-        total = computer_choice + user_choice
-        index = total % len(self.computer_dice.values)
+        user_throw = self.generate_throw(self.user_dice)
 
-        computer_throw = self.computer_dice.values[index]
-        user_throw = self.user_dice.values[index]
-
-        print(f"Computer's choice: {computer_choice}, throw: {computer_throw}")
-        print(f"Your choice: {user_choice}, throw: {user_throw}")
+        print(f"Computer's throw: {computer_throw}")
+        print(f"Your throw: {user_throw}")
 
         if computer_throw == user_throw:
             print("It's a tie!")
@@ -156,13 +134,10 @@ class DiceGame:
         else:
             print("Computer wins!")
 
-    def manual_pick(self, dice: Dice):
-        print(f"Dice: {', '.join(map(str, dice.values))}")
-        while True:
-            choice = input(f"Pick a number (0-{len(dice.values) - 1}): ").strip()
-            if choice.isdigit() and 0 <= int(choice) < len(dice.values):
-                return int(choice)
-            print("Invalid choice. Try again.")
+    def generate_throw(self, dice: Dice):
+        seed = secrets.token_bytes(16)
+        fair_number = RandomFairGenerator.generate_fair_number(0, len(dice.values) - 1, self.secret_key, seed)
+        return dice.values[fair_number]
 
 
 if __name__ == "__main__":

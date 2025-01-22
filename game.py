@@ -124,6 +124,18 @@ class DiceGame:
                 else:
                     print("Invalid choice. Try again.")
 
+    def generate_throw(self):
+        computer_choice = RandomFairGenerator.generate_fair_number(0, len(self.computer_dice.values) - 1, self.secret_key)
+        hmac_value = RandomFairGenerator.generate_hmac(computer_choice, self.secret_key)
+        print(f"Choosing a number between 0-{len(self.computer_dice.values) - 1} (HMAC: {hmac_value})")
+        user_choice = self.manual_pick(self.user_dice)
+
+        total = computer_choice + user_choice
+        index = total % len(self.computer_dice.values)
+        print(f"The result is {computer_choice} + {user_choice} = {index} (mod {len(self.computer_dice.values)})")
+
+        return index
+
     def play_game(self):
         self.determine_first_move()
 
@@ -136,18 +148,21 @@ class DiceGame:
             self.play_turn('user', available_dice)
             available_dice.remove(self.user_dice)
             self.play_turn('computer', available_dice)
+    
+    def end_game(self):
+        print("")
+        print("Lets generate my throw:")
+        computer_index = self.generate_throw()
+        computer_throw = self.computer_dice.values[computer_index]
+        print(f"My throw: {computer_throw}")
+        print("")
+        print("Now lets generate your throw:")
+        user_index = self.generate_throw()
+        user_throw = self.user_dice.values[user_index]
+        print(f"Your throw: {user_throw}")
 
-        computer_choice = RandomFairGenerator.generate_fair_number(0, len(self.computer_dice.values) - 1, self.secret_key)
-        user_choice = self.manual_pick(self.user_dice)
-
-        total = computer_choice + user_choice
-        index = total % len(self.computer_dice.values)
-
-        computer_throw = self.computer_dice.values[index]
-        user_throw = self.user_dice.values[index]
-
-        print(f"Computer's choice: {computer_choice}, throw: {computer_throw}")
-        print(f"Your choice: {user_choice}, throw: {user_throw}")
+        print(f"Computer's throw: {computer_throw}")
+        print(f"Your throw: {user_throw}")
 
         if computer_throw == user_throw:
             print("It's a tie!")
@@ -170,6 +185,7 @@ if __name__ == "__main__":
     try:
         dice_game.validate_arguments()
         dice_game.play_game()
+        dice_game.end_game()
     except ValueError as e:
         print(f"Error: {e}")
         print("Example usage: python3 game.py 2,2,4,4,9,9 6,8,1,1,8,6 7,5,3,7,5,3")

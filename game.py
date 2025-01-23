@@ -78,7 +78,7 @@ class DiceGame:
         random_number = secrets.randbelow(2)  # 0 or 1
         self.secret_key = RandomFairGenerator.generate_secure_key()
         hmac_value = hmac.new(self.secret_key, str(random_number).encode(), hashlib.sha3_256).hexdigest()
-        print(f"HMAC={hmac_value.upper()}")
+        print(f"HMAC={hmac_value}")
 
         while True:
             choice = input("Guess 0 or 1 (X to exit): ").strip()

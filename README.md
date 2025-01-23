@@ -45,7 +45,7 @@ Each argument represents a die, with its sides separated by commas. Ensure:
 - Each die has at least 4 sides.
 - All dice have the same number of sides.
 
-### Example Gameplay
+## Example Gameplay
 
 1. **Start the Game**:
     

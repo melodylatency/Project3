@@ -99,16 +99,47 @@ class DiceGame:
             print(f"Computer chose: {self.computer_dice}")
         else:
             while True:
-                print("Choose your dice:")
+                print("Choose your dice or type 'help' for probabilities:")
                 for idx, dice in enumerate(available_dice):
                     print(f"{idx}: {', '.join(map(str, dice.values))}")
                 choice = input("Your choice: ").strip()
-                if choice.isdigit() and 0 <= int(choice) < len(available_dice):
+                if choice.lower() == "help":
+                    self.display_probabilities(available_dice)
+                elif choice.isdigit() and 0 <= int(choice) < len(available_dice):
                     self.user_dice = available_dice[int(choice)]
                     print(f"You chose: {self.user_dice}")
                     break
                 else:
                     print("Invalid choice. Try again.")
+
+    def display_probabilities(self, available_dice: List[Dice]):
+        print("\nProbabilities of winning for each dice pair:")
+        print("User Dice \ Computer Dice | Probability of Winning")
+        print("---------------------------------------------")
+        for user_dice in available_dice:
+            for computer_dice in available_dice:
+                if user_dice != computer_dice:
+                    user_win_prob = self.calculate_win_probability(
+                        user_dice, computer_dice
+                    )
+                    print(
+                        f"{user_dice.values} vs {computer_dice.values} | {user_win_prob:.2f}"
+                    )
+        print("")
+
+    def calculate_win_probability(self, user_dice: Dice, computer_dice: Dice) -> float:
+        if user_dice == computer_dice:
+            return 0.0
+
+        user_wins = 0
+        total_comparisons = len(user_dice.values) * len(computer_dice.values)
+
+        for user_roll in user_dice.values:
+            for computer_roll in computer_dice.values:
+                if user_roll > computer_roll:
+                    user_wins += 1
+
+        return user_wins / total_comparisons
 
     def generate_throw(self):
         self.secret_key = RandomFairGenerator.generate_secure_key()

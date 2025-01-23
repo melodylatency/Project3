@@ -85,6 +85,7 @@ class DiceGame:
             if choice == '0' or choice == '1':
                 user_guess = int(choice)
                 print(f"My choice: {random_number} (KEY={self.secret_key.hex()})")
+                print("")
                 if user_guess == random_number:
                     self.first_player = 'user'
                     print("You go first!")
@@ -99,18 +100,9 @@ class DiceGame:
 
     def play_turn(self, player: str, available_dice: List[Dice]):
         if player == 'computer':
-            self.secret_key = RandomFairGenerator.generate_secure_key()
             computer_choice_index = secrets.randbelow(len(available_dice))
             self.computer_dice = available_dice[computer_choice_index]
             print(f"Computer chose: {self.computer_dice}")
-
-            # Generate fair number and HMAC
-            computer_number = RandomFairGenerator.generate_fair_number(0, len(self.computer_dice.values) - 1, self.secret_key)
-            hmac_value = RandomFairGenerator.generate_hmac(computer_number, self.secret_key)
-            print(f"Computer's HMAC: {hmac_value}")
-
-            # Store computer's choice for later validation
-            self.computer_choice = computer_number
         else:
             while True:
                 print("Choose your dice:")
@@ -125,6 +117,7 @@ class DiceGame:
                     print("Invalid choice. Try again.")
 
     def generate_throw(self):
+        self.secret_key = RandomFairGenerator.generate_secure_key()
         computer_choice = RandomFairGenerator.generate_fair_number(0, len(self.computer_dice.values) - 1, self.secret_key)
         hmac_value = RandomFairGenerator.generate_hmac(computer_choice, self.secret_key)
         print(f"Choosing a number between 0-{len(self.computer_dice.values) - 1} (HMAC: {hmac_value})")
@@ -133,6 +126,7 @@ class DiceGame:
         total = computer_choice + user_choice
         index = total % len(self.computer_dice.values)
         print(f"The result is {computer_choice} + {user_choice} = {index} (mod {len(self.computer_dice.values)})")
+        print(f"KEY: {self.secret_key.hex()}")
 
         return index
 
@@ -160,16 +154,15 @@ class DiceGame:
         user_index = self.generate_throw()
         user_throw = self.user_dice.values[user_index]
         print(f"Your throw: {user_throw}")
-
-        print(f"Computer's throw: {computer_throw}")
-        print(f"Your throw: {user_throw}")
+        
+        print("")
 
         if computer_throw == user_throw:
-            print("It's a tie!")
+            print(f"{computer_throw} = {user_throw}: It's a tie!")
         elif user_throw > computer_throw:
-            print("You win!")
+            print(f"{computer_throw} < {user_throw}: You win!")
         else:
-            print("Computer wins!")
+            print(f"{computer_throw} > {user_throw}: Computer wins!")
 
     def manual_pick(self, dice: Dice):
         print(f"Dice: {', '.join(map(str, dice.values))}")

@@ -13,20 +13,26 @@ class Dice:
         return f"Dice({', '.join(map(str, self.values))})"
 
 
-class RandomFairGenerator:
+class RandomKeyGenerator:
     @staticmethod
     def generate_secure_key() -> bytes:
         return secrets.token_bytes(32)
 
     @staticmethod
-    def generate_hmac(value: int, key: bytes) -> str:
+    def generate_random_number(upper_bound: int) -> int:
+        return secrets.randbelow(upper_bound)
+
+
+class HMACCalculator:
+    @staticmethod
+    def calculate_hmac(value: int, key: bytes) -> str:
         message = str(value).encode()
         return hmac.new(key, message, hashlib.sha3_256).hexdigest()
 
 
-class DiceValidator:
+class DiceParser:
     @staticmethod
-    def validate_arguments(args: List[str]) -> List[Dice]:
+    def parse_dice_configurations(args: List[str]) -> List[Dice]:
         if len(args) < 3:
             raise ValueError(
                 "Not enough dice provided. You need to provide 3 or more dice configurations."
@@ -61,17 +67,15 @@ class DiceValidator:
         return dice_list
 
 
-class FirstPlayerDeterminer:
+class FirstMoveProtocol:
     def __init__(self):
-        self.secret_key = RandomFairGenerator.generate_secure_key()
+        self.secret_key = RandomKeyGenerator.generate_secure_key()
         self.first_player = None
 
     def determine_first_move(self):
         print("Determining who makes the first move...")
-        random_number = secrets.randbelow(2)
-        hmac_value = hmac.new(
-            self.secret_key, str(random_number).encode(), hashlib.sha3_256
-        ).hexdigest()
+        random_number = RandomKeyGenerator.generate_random_number(2)
+        hmac_value = HMACCalculator.calculate_hmac(random_number, self.secret_key)
         print(f"HMAC={hmac_value}")
 
         while True:
@@ -95,22 +99,6 @@ class FirstPlayerDeterminer:
 
 class ProbabilityCalculator:
     @staticmethod
-    def display_probabilities(available_dice: List[Dice]):
-        print("\nProbabilities of winning for each dice pair:")
-        print("User Dice \\ Computer Dice | Probability of Winning")
-        print("---------------------------------------------")
-        for user_dice in available_dice:
-            for computer_dice in available_dice:
-                if user_dice != computer_dice:
-                    user_win_prob = ProbabilityCalculator.calculate_win_probability(
-                        user_dice, computer_dice
-                    )
-                    print(
-                        f"{user_dice.values} vs {computer_dice.values} | {user_win_prob:.2f}"
-                    )
-        print("")
-
-    @staticmethod
     def calculate_win_probability(user_dice: Dice, computer_dice: Dice) -> float:
         if user_dice == computer_dice:
             return 0.0
@@ -126,16 +114,36 @@ class ProbabilityCalculator:
         return user_wins / total_comparisons
 
 
+class ProbabilityTable:
+    @staticmethod
+    def display_probabilities(available_dice: List[Dice]):
+        print("\nProbabilities of winning for each dice pair:")
+        print("User Dice \\ Computer Dice | Probability of Winning")
+        print("---------------------------------------------")
+        for user_dice in available_dice:
+            for computer_dice in available_dice:
+                if user_dice != computer_dice:
+                    user_win_prob = ProbabilityCalculator.calculate_win_probability(
+                        user_dice, computer_dice
+                    )
+                    print(
+                        f"{user_dice.values} vs {computer_dice.values} | {user_win_prob:.2f}"
+                    )
+        print("")
+
+
 class DiceGame:
     def __init__(self, dice_list: List[Dice]):
         self.dice_list = dice_list
         self.computer_dice = None
         self.user_dice = None
-        self.first_player_determiner = FirstPlayerDeterminer()
+        self.first_move_protocol = FirstMoveProtocol()
 
     def play_turn(self, player: str, available_dice: List[Dice]):
         if player == "computer":
-            computer_choice_index = secrets.randbelow(len(available_dice))
+            computer_choice_index = RandomKeyGenerator.generate_random_number(
+                len(available_dice)
+            )
             self.computer_dice = available_dice[computer_choice_index]
             print(f"Computer chose: {self.computer_dice}")
         else:
@@ -145,7 +153,7 @@ class DiceGame:
                     print(f"{idx}: {', '.join(map(str, dice.values))}")
                 choice = input("Your choice: ").strip()
                 if choice.lower() == "help":
-                    ProbabilityCalculator.display_probabilities(available_dice)
+                    ProbabilityTable.display_probabilities(available_dice)
                 elif choice.isdigit() and 0 <= int(choice) < len(available_dice):
                     self.user_dice = available_dice[int(choice)]
                     print(f"You chose: {self.user_dice}")
@@ -154,9 +162,9 @@ class DiceGame:
                     print("Invalid choice. Try again.")
 
     def generate_throw(self, dice: Dice):
-        secret_key = RandomFairGenerator.generate_secure_key()
-        computer_choice = secrets.randbelow(len(dice.values))
-        hmac_value = RandomFairGenerator.generate_hmac(computer_choice, secret_key)
+        secret_key = RandomKeyGenerator.generate_secure_key()
+        computer_choice = RandomKeyGenerator.generate_random_number(len(dice.values))
+        hmac_value = HMACCalculator.calculate_hmac(computer_choice, secret_key)
         print(
             f"Choosing a number between 0-{len(dice.values) - 1} (HMAC: {hmac_value})"
         )
@@ -172,10 +180,10 @@ class DiceGame:
         return index
 
     def play_game(self):
-        self.first_player_determiner.determine_first_move()
+        self.first_move_protocol.determine_first_move()
 
         available_dice = self.dice_list.copy()
-        if self.first_player_determiner.first_player == "computer":
+        if self.first_move_protocol.first_player == "computer":
             self.play_turn("computer", available_dice)
             available_dice.remove(self.computer_dice)
             self.play_turn("user", available_dice)
@@ -215,7 +223,7 @@ class DiceGame:
 
 if __name__ == "__main__":
     try:
-        dice_list = DiceValidator.validate_arguments(sys.argv[1:])
+        dice_list = DiceParser.parse_dice_configurations(sys.argv[1:])
         dice_game = DiceGame(dice_list)
         dice_game.play_game()
         dice_game.end_game()

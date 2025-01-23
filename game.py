@@ -27,17 +27,6 @@ class RandomFairGenerator:
         message = str(value).encode()
         return hmac.new(key, message, hashlib.sha3_256).hexdigest()
 
-    @staticmethod
-    def generate_fair_number(lower: int, upper: int, key: bytes) -> int:
-        """Generates a fair random number and its HMAC."""
-        range_size = upper - lower + 1
-        while True:
-            random_bytes = secrets.token_bytes(2)
-            random_value = int.from_bytes(random_bytes, 'big')
-            if random_value < range_size * (2**16 // range_size):  # Avoid bias
-                break
-        return random_value % range_size + lower
-
 
 # --- DiceGame Class ---
 class DiceGame:
@@ -118,7 +107,7 @@ class DiceGame:
 
     def generate_throw(self):
         self.secret_key = RandomFairGenerator.generate_secure_key()
-        computer_choice = RandomFairGenerator.generate_fair_number(0, len(self.computer_dice.values) - 1, self.secret_key)
+        computer_choice = secrets.randbelow(len(self.computer_dice.values))
         hmac_value = RandomFairGenerator.generate_hmac(computer_choice, self.secret_key)
         print(f"Choosing a number between 0-{len(self.computer_dice.values) - 1} (HMAC: {hmac_value})")
         user_choice = self.manual_pick(self.user_dice)
@@ -165,7 +154,6 @@ class DiceGame:
             print(f"{computer_throw} > {user_throw}: Computer wins!")
 
     def manual_pick(self, dice: Dice):
-        print(f"Dice: {', '.join(map(str, dice.values))}")
         while True:
             choice = input(f"Pick a number (0-{len(dice.values) - 1}): ").strip()
             if choice.isdigit() and 0 <= int(choice) < len(dice.values):
